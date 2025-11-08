@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OKX 공지 수동 검색기 (v3)</title>
+    <title>OKX 공지 수동 검색기 (v3.1 - 저장 기능)</title>
     <style>
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
@@ -71,7 +71,6 @@
             border-radius: 5px;
             margin-bottom: 20px;
         }
-        /* 추가된 안내 문구 스타일 */
         .search-example {
             font-size: 0.9em;
             color: #555;
@@ -85,7 +84,7 @@
 <body>
 
 <div class="container">
-    <h1>OKX 공지사항 '수동' 검색기 (v3)</h1>
+    <h1>OKX 공지사항 '수동' 검색기 (v3.1 - 저장 기능)</h1>
 
     <div class="instructions">
         <strong>⚠️ 중요: 사용 방법</strong>
@@ -94,7 +93,7 @@
             <li>페이지에서 마우스 우클릭 후 **'페이지 소스 보기'** (Ctrl+U)를 누릅니다.</li>
             <li>소스 코드 **전체(Ctrl+A)**를 **복사(Ctrl+C)**합니다.</li>
             <li>아래 'HTML 소스 코드'란에 **붙여넣기(Ctrl+V)**합니다.</li>
-            <li>검색 조건을 입력하고 '검색 실행' 버튼을 누릅니다.</li>
+            <li>검색 조건을 입력하고 '검색 실행' 버튼을 누릅니다. (검색어는 브라우저에 자동 저장됩니다)</li>
         </ol>
     </div>
 
@@ -124,8 +123,19 @@
     // 검색 실행 함수
     function performSearch() {
         const sourceHtml = document.getElementById('sourceHtml').value;
-        const keywordsInput = document.getElementById('keywords').value;
+        const keywordsInput = document.getElementById('keywords').value; // 검색어 '값'을 가져옴
         const resultList = document.getElementById('result-list');
+        
+        // ==========================================================
+        // ▼▼▼ 여기가 수정/추가된 부분입니다 (1/2) ▼▼▼
+        // 검색어를 localStorage에 'okxSearchKeywords'라는 키로 저장
+        try {
+            localStorage.setItem('okxSearchKeywords', keywordsInput);
+        } catch (e) {
+            console.error("localStorage 저장에 실패했습니다:", e);
+        }
+        // ▲▲▲ 여기가 수정/추가된 부분입니다 (1/2) ▲▲▲
+        // ==========================================================
         
         resultList.innerHTML = '<li>검색 중...</li>';
 
@@ -136,7 +146,7 @@
 
         // --- 1. 검색 조건 파싱 ---
         // 쉼표(,)로 "AND" 조건 분리
-        const andConditions = keywordsInput.split(',')
+        const andConditions = keywordsInput.split(',') // 'keywordsInput' 변수(값)를 그대로 사용
                                          .map(c => c.trim())
                                          .filter(c => c.length > 0);
 
@@ -149,7 +159,7 @@
 
         // Regex 특수 문자를 이스케이프하는 함수
         function escapeRegExp(string) {
-            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $&는 일치하는 전체 문자열을 의미
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
         }
 
         // 사용자 검색어(와일드카드 * 포함)를 정규식(Regex)으로 변환하는 함수
@@ -157,11 +167,7 @@
             const trimmedTerm = term.trim();
             if (trimmedTerm === '') return null;
             
-            // 1. 모든 특수 문자를 이스케이프 처리
-            // 2. 이스케이프된 '*' (즉, '\\*')를 정규식 와일드카드 '.*'로 다시 변경
             const regexString = escapeRegExp(trimmedTerm).replace(/\\\*/g, '.*');
-            
-            // 대소문자 구분 없이(i) 검색하는 정규식 객체 생성
             return new RegExp(regexString, 'i');
         }
 
@@ -172,48 +178,29 @@
         let foundLinks = [];
 
         allLinks.forEach(link => {
-            // ==========================================================
-            // ▼▼▼ 여기가 수정된 부분입니다 ▼▼▼
-            // link.href 대신 link.getAttribute('href')를 사용합니다.
-            const href = link.getAttribute('href');
-            // ▲▲▲ 여기가 수정된 부분입니다 ▲▲▲
-            // ==========================================================
-            
-            const title = link.textContent.trim(); // 화면에 표시할 원본 제목
+            // (이전 답변에서 수정된) 올바른 href 속성 가져오기
+            const href = link.getAttribute('href'); 
+            const title = link.textContent.trim(); 
 
-            // href가 null이거나 유효하지 않은 경우 건너뛰기
             if (!href || !href.includes('/help/') || foundLinks.some(f => f.href === href) || title === '') {
-                return; // 유효하지 않으면 건너뛰기
+                return; 
             }
 
             // --- 4. 검색 로직 적용 ---
-            let allAndConditionsMet = true; // 모든 AND 조건이 충족되었는지 확인하는 플래그
-
-            // 쉼표로 분리된 모든 "AND" 조건을 순회
+            let allAndConditionsMet = true; 
             for (const condition of andConditions) {
-                
-                // 각 "AND" 조건 내에서 "OR" (대소문자 구분 없음)로 "OR" 조건 분리
                 const orTerms = condition.split(/ OR /i).map(t => t.trim()).filter(t => t.length > 0);
-                
-                if (orTerms.length === 0) continue; // 빈 조건이면 건너뛰기
-
-                // 각 "OR" 조건을 정규식으로 변환
+                if (orTerms.length === 0) continue; 
                 const orRegexes = orTerms.map(createRegex).filter(r => r !== null);
-                
                 if (orRegexes.length === 0) continue;
-
-                // "OR" 조건 중 하나라도 제목(title)과 일치하는지 확인
                 const oneOrConditionMet = orRegexes.some(regex => regex.test(title));
-
-                // "OR" 조건 중 하나도 일치하지 않으면
                 if (!oneOrConditionMet) {
-                    allAndConditionsMet = false; // "AND" 조건이 실패
-                    break; // 이 링크는 탈락이므로 다음 AND 조건은 검사할 필요 없음
+                    allAndConditionsMet = false; 
+                    break; 
                 }
             }
 
             // --- 5. 결과 추가 ---
-            // 모든 "AND" 조건을 통과했다면 (allAndConditionsMet가 true로 유지)
             if (allAndConditionsMet) {
                 foundLinks.push({ 
                     href: href, 
@@ -226,8 +213,6 @@
         if (foundLinks.length > 0) {
             let htmlOutput = '';
             foundLinks.forEach(item => {
-                // OKX는 상대 경로를 사용할 수 있으므로, 전체 URL로 보정
-                // 이제 item.href가 "/help/..." 형태이므로 정상적으로 조합됩니다.
                 const fullUrl = new URL(item.href, "https://www.okx.com").href;
                 htmlOutput += `<li><a href="${fullUrl}" target="_blank" rel="noopener noreferrer">${item.title}</a></li>`;
             });
@@ -236,6 +221,23 @@
             resultList.innerHTML = `<li>일치하는 검색 결과를 찾지 못했습니다. (검색 조건: ${keywordsInput})</li>`;
         }
     }
+
+    // ==========================================================
+    // ▼▼▼ 여기가 수정/추가된 부분입니다 (2/2) ▼▼▼
+    // 페이지 로드 시 localStorage에서 검색어를 불러오는 즉시 실행 함수
+    (function loadSavedKeywords() {
+        try {
+            const savedKeywords = localStorage.getItem('okxSearchKeywords');
+            // 저장된 값이 null이나 undefined가 아닌 경우에만 입력창의 값을 변경
+            if (savedKeywords !== null) { 
+                document.getElementById('keywords').value = savedKeywords;
+            }
+        } catch (e) {
+            console.error("localStorage 불러오기에 실패했습니다:", e);
+        }
+    })();
+    // ▲▲▲ 여기가 수정/추가된 부분입니다 (2/2) ▲▲▲
+    // ==========================================================
 </script>
 
 </body>
