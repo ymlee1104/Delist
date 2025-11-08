@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OKX 공지 수동 검색기</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+            margin: 20px; 
+            background-color: #f7f9fc;
+            color: #333;
+        }
+        .container { 
+            max-width: 900px; 
+            margin: 0 auto; 
+            padding: 25px; 
+            background-color: #ffffff; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+        }
+        h1, h2 { 
+            color: #007bff; 
+            border-bottom: 2px solid #f0f0f0; 
+            padding-bottom: 10px;
+        }
+        label { 
+            display: block; 
+            margin-top: 15px; 
+            font-weight: 600;
+        }
+        input[type="text"], select, textarea {
+            width: 100%; 
+            padding: 10px; 
+            margin-top: 5px; 
+            box-sizing: border-box; 
+            border: 1px solid #ddd; 
+            border-radius: 5px;
+        }
+        textarea {
+            height: 200px;
+            font-family: monospace;
+            background-color: #fafafa;
+        }
+        button { 
+            background-color: #007bff; 
+            color: white; 
+            border: none; 
+            cursor: pointer; 
+            margin-top: 20px; 
+            font-size: 16px;
+            padding: 12px 20px;
+            border-radius: 5px;
+            width: 100%;
+        }
+        button:hover { background-color: #0056b3; }
+        #results { 
+            margin-top: 30px; 
+            padding: 15px; 
+            background-color: #fdfdfd; 
+            border: 1px solid #eee; 
+            border-radius: 5px;
+            min-height: 50px;
+        }
+        #results ul { padding-left: 20px; }
+        #results li { margin-bottom: 10px; }
+        .instructions {
+            background-color: #fff9e6;
+            border: 1px solid #ffeeba;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>OKX 공지사항 '수동' 검색기</h1>
+
+    <div class="instructions">
+        <strong>⚠️ 중요: 사용 방법</strong>
+        <ol>
+            <li><a href="https://www.okx.com/help/section/announcements-delistings" target="_blank" rel="noopener noreferrer">OKX 공지사항 페이지</a>를 새 탭에서 엽니다.</li>
+            <li>페이지가 모두 로드되면, 그 페이지에서 마우스 우클릭 후 **'페이지 소스 보기'** (또는 Ctrl+U)를 누릅니다.</li>
+            <li>열린 소스 코드 페이지의 **모든 텍스트(Ctrl+A)**를 **복사(Ctrl+C)**합니다.</li>
+            <li>아래 'HTML 소스 코드'란에 **붙여넣기(Ctrl+V)**합니다.</li>
+            <li>검색 조건을 입력하고 '검색 실행' 버튼을 누릅니다.</li>
+        </ol>
+        <p><strong>참고:</strong> 이 방식은 OKX가 웹사이트 구조를 변경하면 작동하지 않을 수 있습니다. 또한, 날짜 필터링은 매우 복잡하여 이 스크립트에는 포함되지 않았습니다. (요청하신 기간은 수동으로 확인 필요)</p>
+    </div>
+
+    <label for="sourceHtml">1. OKX 페이지 소스 코드 붙여넣기:</label>
+    <textarea id="sourceHtml" placeholder="여기에 OKX 공지사항 페이지의 전체 HTML 소스 코드를 붙여넣으세요..."></textarea>
+    
+    <label for="keywords">2. 검색어 (쉼표로 구분):</label>
+    <input type="text" id="keywords" value="delist, VIRTUALUSDT.P, NEIROUSDT.P">
+
+    <label for="logic">3. 검색 조건:</label>
+    <select id="logic">
+        <option value="OR">OR (하나라도 포함)</option>
+        <option value="AND">AND (모두 포함)</option>
+    </select>
+
+    <button onclick="performSearch()">검색 실행</button>
+
+    <hr style="margin-top: 30px;">
+
+    <div id="results">
+        <h2>검색 결과</h2>
+        <ul id="result-list">
+            <li>(검색 대기 중)</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+    function performSearch() {
+        const sourceHtml = document.getElementById('sourceHtml').value;
+        const keywordsInput = document.getElementById('keywords').value;
+        const logic = document.getElementById('logic').value;
+        const resultList = document.getElementById('result-list');
+        
+        resultList.innerHTML = '<li>검색 중...</li>';
+
+        if (!sourceHtml) {
+            resultList.innerHTML = '<li>⚠️ HTML 소스 코드를 먼저 붙여넣어 주세요.</li>';
+            return;
+        }
+
+        // 1. 입력된 키워드를 배열로 변환 (소문자로)
+        const keywords = keywordsInput.split(',')
+                                    .map(k => k.trim().toLowerCase())
+                                    .filter(k => k.length > 0);
+
+        if (keywords.length === 0) {
+            resultList.innerHTML = '<li>⚠️ 검색어를 입력해 주세요.</li>';
+            return;
+        }
+
+        // 2. 붙여넣은 HTML 텍스트를 파싱 가능한 DOM으로 변환
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(sourceHtml, 'text/html');
+
+        // 3. OKX 공지사항 링크(<a> 태그)만 찾기
+        //    (OKX 구조에 맞춰 '/help/announcements/'가 포함된 링크만 검색)
+        const allLinks = doc.querySelectorAll('a');
+        let foundLinks = [];
+
+        allLinks.forEach(link => {
+            const href = link.href;
+            // OKX 도움말 링크이고, 이미 추가된 링크가 아닌지 확인
+            if (href.includes('/help/') && !foundLinks.some(f => f.href === href)) {
+                
+                const title = link.textContent.toLowerCase().trim();
+                let matches = false;
+
+                // 4. AND / OR 조건에 따라 키워드 매칭
+                if (logic === 'OR') {
+                    matches = keywords.some(k => title.includes(k));
+                } else { // AND
+                    matches = keywords.every(k => title.includes(k));
+                }
+
+                if (matches) {
+                    foundLinks.push({ 
+                        href: href, 
+                        title: link.textContent.trim() || "(제목 없음)"
+                    });
+                }
+            }
+        });
+
+        // 5. 결과 표시
+        if (foundLinks.length > 0) {
+            let htmlOutput = '';
+            foundLinks.forEach(item => {
+                htmlOutput += `<li><a href="${item.href}" target="_blank" rel="noopener noreferrer">${item.title}</a></li>`;
+            });
+            resultList.innerHTML = htmlOutput;
+        } else {
+            resultList.innerHTML = `<li>일치하는 검색 결과를 찾지 못했습니다. (검색어: ${keywordsInput})</li>`;
+        }
+    }
+</script>
+
+</body>
+</html>
