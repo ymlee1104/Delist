@@ -172,11 +172,17 @@
         let foundLinks = [];
 
         allLinks.forEach(link => {
-            const href = link.href;
+            // ==========================================================
+            // ▼▼▼ 여기가 수정된 부분입니다 ▼▼▼
+            // link.href 대신 link.getAttribute('href')를 사용합니다.
+            const href = link.getAttribute('href');
+            // ▲▲▲ 여기가 수정된 부분입니다 ▲▲▲
+            // ==========================================================
+            
             const title = link.textContent.trim(); // 화면에 표시할 원본 제목
 
-            // 유효한 링크인지, 중복이 아닌지, 제목이 있는지 확인
-            if (!href.includes('/help/') || foundLinks.some(f => f.href === href) || title === '') {
+            // href가 null이거나 유효하지 않은 경우 건너뛰기
+            if (!href || !href.includes('/help/') || foundLinks.some(f => f.href === href) || title === '') {
                 return; // 유효하지 않으면 건너뛰기
             }
 
@@ -221,6 +227,7 @@
             let htmlOutput = '';
             foundLinks.forEach(item => {
                 // OKX는 상대 경로를 사용할 수 있으므로, 전체 URL로 보정
+                // 이제 item.href가 "/help/..." 형태이므로 정상적으로 조합됩니다.
                 const fullUrl = new URL(item.href, "https://www.okx.com").href;
                 htmlOutput += `<li><a href="${fullUrl}" target="_blank" rel="noopener noreferrer">${item.title}</a></li>`;
             });
