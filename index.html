@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OKX 공지 수동 검색기</title>
+    <title>OKX 공지 수동 검색기 (v3)</title>
     <style>
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
@@ -71,37 +71,43 @@
             border-radius: 5px;
             margin-bottom: 20px;
         }
+        /* 추가된 안내 문구 스타일 */
+        .search-example {
+            font-size: 0.9em;
+            color: #555;
+            margin-top: 8px;
+            padding-left: 5px;
+            font-style: italic;
+            line-height: 1.4;
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>OKX 공지사항 '수동' 검색기</h1>
+    <h1>OKX 공지사항 '수동' 검색기 (v3)</h1>
 
     <div class="instructions">
         <strong>⚠️ 중요: 사용 방법</strong>
         <ol>
             <li><a href="https://www.okx.com/help/section/announcements-delistings" target="_blank" rel="noopener noreferrer">OKX 공지사항 페이지</a>를 새 탭에서 엽니다.</li>
-            <li>페이지가 모두 로드되면, 그 페이지에서 마우스 우클릭 후 **'페이지 소스 보기'** (또는 Ctrl+U)를 누릅니다.</li>
-            <li>열린 소스 코드 페이지의 **모든 텍스트(Ctrl+A)**를 **복사(Ctrl+C)**합니다.</li>
+            <li>페이지에서 마우스 우클릭 후 **'페이지 소스 보기'** (Ctrl+U)를 누릅니다.</li>
+            <li>소스 코드 **전체(Ctrl+A)**를 **복사(Ctrl+C)**합니다.</li>
             <li>아래 'HTML 소스 코드'란에 **붙여넣기(Ctrl+V)**합니다.</li>
             <li>검색 조건을 입력하고 '검색 실행' 버튼을 누릅니다.</li>
         </ol>
-        <p><strong>참고:</strong> 이 방식은 OKX가 웹사이트 구조를 변경하면 작동하지 않을 수 있습니다. 또한, 날짜 필터링은 매우 복잡하여 이 스크립트에는 포함되지 않았습니다. (요청하신 기간은 수동으로 확인 필요)</p>
     </div>
 
     <label for="sourceHtml">1. OKX 페이지 소스 코드 붙여넣기:</label>
     <textarea id="sourceHtml" placeholder="여기에 OKX 공지사항 페이지의 전체 HTML 소스 코드를 붙여넣으세요..."></textarea>
     
-    <label for="keywords">2. 검색어 (쉼표로 구분):</label>
-    <input type="text" id="keywords" value="delist, VIRTUALUSDT.P, NEIROUSDT.P">
+    <label for="keywords">2. 검색 조건 (쉼표=AND, OR=OR, *=와일드카드):</label>
+    <input type="text" id="keywords" value="delist, VIRTUAL* OR NEIRO*" placeholder="예: delist, VIRTUAL* OR NEIRO*">
 
-    <label for="logic">3. 검색 조건:</label>
-    <select id="logic">
-        <option value="OR">OR (하나라도 포함)</option>
-        <option value="AND">AND (모두 포함)</option>
-    </select>
-
+    <div class="search-example">
+        검색어 조합예시: delist, VIRTUAL*P OR NEIRO*P<br>
+        &rarr; ('delist'가 포함) AND ('VIRTUAL'로 시작하고 'P'로 끝나거나' OR 'NEIRO'로 시작하고 'P'로 끝나는 항목)
+    </div>
     <button onclick="performSearch()">검색 실행</button>
 
     <hr style="margin-top: 30px;">
@@ -115,10 +121,10 @@
 </div>
 
 <script>
+    // 검색 실행 함수
     function performSearch() {
         const sourceHtml = document.getElementById('sourceHtml').value;
         const keywordsInput = document.getElementById('keywords').value;
-        const logic = document.getElementById('logic').value;
         const resultList = document.getElementById('result-list');
         
         resultList.innerHTML = '<li>검색 중...</li>';
@@ -128,58 +134,99 @@
             return;
         }
 
-        // 1. 입력된 키워드를 배열로 변환 (소문자로)
-        const keywords = keywordsInput.split(',')
-                                    .map(k => k.trim().toLowerCase())
-                                    .filter(k => k.length > 0);
+        // --- 1. 검색 조건 파싱 ---
+        // 쉼표(,)로 "AND" 조건 분리
+        const andConditions = keywordsInput.split(',')
+                                         .map(c => c.trim())
+                                         .filter(c => c.length > 0);
 
-        if (keywords.length === 0) {
-            resultList.innerHTML = '<li>⚠️ 검색어를 입력해 주세요.</li>';
+        if (andConditions.length === 0) {
+            resultList.innerHTML = '<li>⚠️ 검색 조건을 입력해 주세요.</li>';
             return;
         }
 
-        // 2. 붙여넣은 HTML 텍스트를 파싱 가능한 DOM으로 변환
+        // --- 2. 헬퍼 함수 정의 ---
+
+        // Regex 특수 문자를 이스케이프하는 함수
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $&는 일치하는 전체 문자열을 의미
+        }
+
+        // 사용자 검색어(와일드카드 * 포함)를 정규식(Regex)으로 변환하는 함수
+        function createRegex(term) {
+            const trimmedTerm = term.trim();
+            if (trimmedTerm === '') return null;
+            
+            // 1. 모든 특수 문자를 이스케이프 처리
+            // 2. 이스케이프된 '*' (즉, '\\*')를 정규식 와일드카드 '.*'로 다시 변경
+            const regexString = escapeRegExp(trimmedTerm).replace(/\\\*/g, '.*');
+            
+            // 대소문자 구분 없이(i) 검색하는 정규식 객체 생성
+            return new RegExp(regexString, 'i');
+        }
+
+        // --- 3. HTML 파싱 및 링크 검색 ---
         const parser = new DOMParser();
         const doc = parser.parseFromString(sourceHtml, 'text/html');
-
-        // 3. OKX 공지사항 링크(<a> 태그)만 찾기
-        //    (OKX 구조에 맞춰 '/help/announcements/'가 포함된 링크만 검색)
         const allLinks = doc.querySelectorAll('a');
         let foundLinks = [];
 
         allLinks.forEach(link => {
             const href = link.href;
-            // OKX 도움말 링크이고, 이미 추가된 링크가 아닌지 확인
-            if (href.includes('/help/') && !foundLinks.some(f => f.href === href)) {
+            const title = link.textContent.trim(); // 화면에 표시할 원본 제목
+
+            // 유효한 링크인지, 중복이 아닌지, 제목이 있는지 확인
+            if (!href.includes('/help/') || foundLinks.some(f => f.href === href) || title === '') {
+                return; // 유효하지 않으면 건너뛰기
+            }
+
+            // --- 4. 검색 로직 적용 ---
+            let allAndConditionsMet = true; // 모든 AND 조건이 충족되었는지 확인하는 플래그
+
+            // 쉼표로 분리된 모든 "AND" 조건을 순회
+            for (const condition of andConditions) {
                 
-                const title = link.textContent.toLowerCase().trim();
-                let matches = false;
+                // 각 "AND" 조건 내에서 "OR" (대소문자 구분 없음)로 "OR" 조건 분리
+                const orTerms = condition.split(/ OR /i).map(t => t.trim()).filter(t => t.length > 0);
+                
+                if (orTerms.length === 0) continue; // 빈 조건이면 건너뛰기
 
-                // 4. AND / OR 조건에 따라 키워드 매칭
-                if (logic === 'OR') {
-                    matches = keywords.some(k => title.includes(k));
-                } else { // AND
-                    matches = keywords.every(k => title.includes(k));
-                }
+                // 각 "OR" 조건을 정규식으로 변환
+                const orRegexes = orTerms.map(createRegex).filter(r => r !== null);
+                
+                if (orRegexes.length === 0) continue;
 
-                if (matches) {
-                    foundLinks.push({ 
-                        href: href, 
-                        title: link.textContent.trim() || "(제목 없음)"
-                    });
+                // "OR" 조건 중 하나라도 제목(title)과 일치하는지 확인
+                const oneOrConditionMet = orRegexes.some(regex => regex.test(title));
+
+                // "OR" 조건 중 하나도 일치하지 않으면
+                if (!oneOrConditionMet) {
+                    allAndConditionsMet = false; // "AND" 조건이 실패
+                    break; // 이 링크는 탈락이므로 다음 AND 조건은 검사할 필요 없음
                 }
+            }
+
+            // --- 5. 결과 추가 ---
+            // 모든 "AND" 조건을 통과했다면 (allAndConditionsMet가 true로 유지)
+            if (allAndConditionsMet) {
+                foundLinks.push({ 
+                    href: href, 
+                    title: title
+                });
             }
         });
 
-        // 5. 결과 표시
+        // --- 6. 결과 표시 ---
         if (foundLinks.length > 0) {
             let htmlOutput = '';
             foundLinks.forEach(item => {
-                htmlOutput += `<li><a href="${item.href}" target="_blank" rel="noopener noreferrer">${item.title}</a></li>`;
+                // OKX는 상대 경로를 사용할 수 있으므로, 전체 URL로 보정
+                const fullUrl = new URL(item.href, "https://www.okx.com").href;
+                htmlOutput += `<li><a href="${fullUrl}" target="_blank" rel="noopener noreferrer">${item.title}</a></li>`;
             });
             resultList.innerHTML = htmlOutput;
         } else {
-            resultList.innerHTML = `<li>일치하는 검색 결과를 찾지 못했습니다. (검색어: ${keywordsInput})</li>`;
+            resultList.innerHTML = `<li>일치하는 검색 결과를 찾지 못했습니다. (검색 조건: ${keywordsInput})</li>`;
         }
     }
 </script>
